@@ -1,0 +1,33 @@
+# ===== 敏感数据 =====
+.env
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# ===== Python =====
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# ===== 日志 =====
+logs/
+*.log
+
+# ===== IDE/系统 =====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ===== 临时文件 =====
+tmp/
+temp/
+*.swp
+*.swo
+*~

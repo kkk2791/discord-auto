@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Discord Auto{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="layout">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h2>🤖 Discord Auto</h2>
+                <span class="version">v1.0</span>
+            </div>
+            <ul class="nav-links">
+                <li>
+                    <a href="/" class="nav-item {% if active_page == 'dashboard' %}active{% endif %}">
+                        <span class="icon">📊</span> 仪表盘
+                    </a>
+                </li>
+                <li>
+                    <a href="/accounts" class="nav-item {% if active_page == 'accounts' %}active{% endif %}">
+                        <span class="icon">👤</span> 账号管理
+                    </a>
+                </li>
+                <li>
+                    <a href="/schedules" class="nav-item {% if active_page == 'schedules' %}active{% endif %}">
+                        <span class="icon">⏰</span> 定时任务
+                    </a>
+                </li>
+                <li>
+                    <a href="/logs" class="nav-item {% if active_page == 'logs' %}active{% endif %}">
+                        <span class="icon">📝</span> 日志
+                    </a>
+                </li>
+            </ul>
+            <div class="sidebar-footer">
+                <div id="scheduler-status" class="status-badge">
+                    <span class="dot green"></span> 运行中
+                </div>
+            </div>
+        </nav>
+        <main class="main-content">
+            <header class="page-header">
+                <h1>{% block header %}{% endblock %}</h1>
+            </header>
+            <div class="page-content">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

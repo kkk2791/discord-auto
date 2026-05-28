@@ -1,0 +1,507 @@
+{% extends "base.html" %}
+{% block title %}定时任务 - Discord Auto{% endblock %}
+{% block header %}⏰ 定时任务管理{% endblock %}
+{% block content %}
+
+<!-- 切换账号 -->
+<div class="card">
+    <div class="card-header">
+        <h3>选择账号</h3>
+    </div>
+    <div class="card-body">
+        <select id="account-select" class="form-select" onchange="switchAccount()">
+            <option value="">-- 请选择账号 --</option>
+        </select>
+    </div>
+</div>
+
+<!-- 账号详情区域（选择账号后显示） -->
+<div id="account-detail" style="display:none">
+
+    <!-- ===== 频道管理 ===== -->
+    <div class="card">
+        <div class="card-header">
+            <h3>📡 频道管理</h3>
+            <button class="btn btn-primary btn-sm" onclick="showChannelModal()">➕ 添加频道</button>
+        </div>
+        <div class="card-body">
+            <div class="hint">每个频道需要配置：用于监听回复（关键词触发AI回复）和/或用于定时发言</div>
+            <table class="table" id="channels-table">
+                <thead><tr>
+                    <th>名称</th><th>频道ID</th><th>服务器</th>
+                    <th>监听回复</th><th>定时发言</th><th>操作</th>
+                </tr></thead>
+                <tbody id="channels-tbody"><tr><td colspan="6" class="text-center">加载中...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ===== 关键词管理 ===== -->
+    <div class="card">
+        <div class="card-header">
+            <h3>🔑 关键词管理（OR 匹配）</h3>
+            <button class="btn btn-primary btn-sm" onclick="showKeywordModal()">➕ 添加关键词</button>
+        </div>
+        <div class="card-body">
+            <div class="hint">消息包含任意关键词即触发 AI 回复。留空频道 = 所有监听频道都生效</div>
+            <table class="table" id="keywords-table">
+                <thead><tr>
+                    <th>关键词</th><th>绑定频道</th><th>启用</th><th>操作</th>
+                </tr></thead>
+                <tbody id="keywords-tbody"><tr><td colspan="4" class="text-center">加载中...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ===== 定时任务管理 ===== -->
+    <div class="card">
+        <div class="card-header">
+            <h3>⏱️ 定时发言任务</h3>
+            <button class="btn btn-primary btn-sm" onclick="showScheduleModal()">➕ 添加定时任务</button>
+        </div>
+        <div class="card-body">
+            <table class="table" id="schedules-table">
+                <thead><tr>
+                <th>名称</th><th>频道</th><th>时间段</th>
+                <th>模式</th><th>条数/每次</th><th>消息数</th><th>状态</th>
+                    <th>上次发送</th><th>操作</th>
+                </tr></thead>
+                <tbody id="schedules-tbody"><tr><td colspan="9" class="text-center">加载中...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- 频道弹窗 -->
+<div class="modal-overlay" id="channel-modal" style="display:none">
+    <div class="modal">
+        <div class="modal-header"><h3>频道</h3><button class="btn-close" onclick="closeModal('channel-modal')">&times;</button></div>
+        <div class="modal-body">
+            <div class="form-group"><label>显示名称</label><input type="text" id="ch-name" class="form-input" placeholder="如: 闲聊区"></div>
+            <div class="form-group"><label>频道 ID</label><input type="text" id="ch-id" class="form-input" placeholder="Discord 频道 ID"></div>
+            <div class="form-group"><label>服务器名称（可选）</label><input type="text" id="ch-guild" class="form-input" placeholder="如: 我的服务器"></div>
+            <div class="form-group">
+                <label class="checkbox-label"><input type="checkbox" id="ch-monitor" checked> 监听回复（关键词触发）</label>
+                <label class="checkbox-label"><input type="checkbox" id="ch-speak" checked> 定时发言</label>
+            </div>
+            <input type="hidden" id="ch-edit-id" value="">
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('channel-modal')">取消</button>
+            <button class="btn btn-primary" onclick="saveChannel()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 关键词弹窗 -->
+<div class="modal-overlay" id="keyword-modal" style="display:none">
+    <div class="modal">
+        <div class="modal-header"><h3>关键词</h3><button class="btn-close" onclick="closeModal('keyword-modal')">&times;</button></div>
+        <div class="modal-body">
+            <div class="form-group"><label>关键词</label><input type="text" id="kw-text" class="form-input" placeholder="如: gm,早安"></div>
+            <div class="form-group">
+                <label>绑定频道（可选）</label>
+                <select id="kw-channel" class="form-select"><option value="">所有监听频道</option></select>
+            </div>
+            <input type="hidden" id="kw-edit-id" value="">
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('keyword-modal')">取消</button>
+            <button class="btn btn-primary" onclick="saveKeyword()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 定时任务弹窗 -->
+<div class="modal-overlay" id="schedule-modal" style="display:none">
+    <div class="modal modal-lg">
+        <div class="modal-header"><h3>定时任务</h3><button class="btn-close" onclick="closeModal('schedule-modal')">&times;</button></div>
+        <div class="modal-body">
+            <div class="form-group"><label>任务名称</label><input type="text" id="sched-name" class="form-input" placeholder="如: 早安"></div>
+            <div class="form-group">
+                <label>发言频道</label>
+                <select id="sched-channel" class="form-select"><option value="">-- 先添加频道 --</option></select>
+            </div>
+            <div class="form-row">
+                <div class="form-group flex-1">
+                    <label>开始时间</label>
+                    <input type="time" id="sched-start" class="form-input" value="06:00">
+                </div>
+                <div class="form-group flex-1">
+                    <label>结束时间</label>
+                    <input type="time" id="sched-end" class="form-input" value="12:00">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>消息模式</label>
+                <select id="sched-mode" class="form-select" onchange="toggleMessageMode()">
+                    <option value="custom">自定义（顺序轮换预设消息）</option>
+                    <option value="random">随机（随机选一条预设消息）</option>
+                    <option value="ai">AI 生成</option>
+                    <option value="mixed">混合（轮流使用预设和AI）</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>每个时间段发送条数</label>
+                <input type="number" id="sched-max" class="form-input" value="1" min="1" max="20">
+                <small style="color: var(--text-muted)">时段等分，每条在各自的分段发送。设为 1 则一个时段只发一条。</small>
+            </div>
+            <input type="hidden" id="sched-edit-id" value="">
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('schedule-modal')">取消</button>
+            <button class="btn btn-primary" onclick="saveSchedule()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 预设消息管理弹窗 -->
+<div class="modal-overlay" id="messages-modal" style="display:none">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3>预设消息 - <span id="msg-sched-name"></span></h3>
+            <button class="btn-close" onclick="closeModal('messages-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="hint">消息按顺序轮流发送。拖拽或点击上下箭头调整顺序。</div>
+            <div id="messages-list"></div>
+            <div class="form-group" style="margin-top:12px">
+                <div class="form-row">
+                    <input type="text" id="new-msg-content" class="form-input flex-1" placeholder="输入新消息内容">
+                    <button class="btn btn-primary" onclick="addMessage()">添加</button>
+                </div>
+            </div>
+            <input type="hidden" id="msg-sched-id" value="">
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('messages-modal')">取消</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentAccountId = null;
+
+async function switchAccount() {
+    currentAccountId = document.getElementById('account-select').value;
+    const detail = document.getElementById('account-detail');
+    if (!currentAccountId) { detail.style.display = 'none'; return; }
+    detail.style.display = 'block';
+    loadChannels();
+    loadKeywords();
+    loadSchedules();
+}
+
+async function loadAccounts() {
+    const res = await fetch('/api/accounts');
+    const accounts = await res.json();
+    const select = document.getElementById('account-select');
+    select.innerHTML = '<option value="">-- 请选择账号 --</option>' +
+        accounts.map(a => `<option value="${a.id}">${escHtml(a.name)} (${a.username || a.id})</option>`).join('');
+}
+loadAccounts();
+
+// ===== 频道管理 =====
+let editChannelId = null;
+
+function showChannelModal() {
+    editChannelId = null;
+    document.getElementById('ch-edit-id').value = '';
+    document.getElementById('ch-name').value = '';
+    document.getElementById('ch-id').value = '';
+    document.getElementById('ch-guild').value = '';
+    document.getElementById('ch-monitor').checked = true;
+    document.getElementById('ch-speak').checked = true;
+    document.getElementById('channel-modal').style.display = 'flex';
+}
+
+async function saveChannel() {
+    const name = document.getElementById('ch-name').value.trim();
+    const chId = document.getElementById('ch-id').value.trim();
+    if (!name || !chId) { alert('名称和频道ID不能为空'); return; }
+
+    const body = {
+        name, channel_id: chId,
+        guild_name: document.getElementById('ch-guild').value.trim(),
+        monitor_reply: document.getElementById('ch-monitor').checked,
+        auto_speak: document.getElementById('ch-speak').checked,
+    };
+    const editId = document.getElementById('ch-edit-id').value;
+    const url = editId ? `/api/channels/${editId}` : `/api/accounts/${currentAccountId}/channels`;
+    const method = editId ? 'PUT' : 'POST';
+    try {
+        const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+        const data = await res.json();
+        if (data.success) { closeModal('channel-modal'); loadChannels(); }
+        else alert('失败: ' + (data.error || ''));
+    } catch(e) { alert(e); }
+}
+
+async function editChannel(ch) {
+    editChannelId = ch.id;
+    document.getElementById('ch-edit-id').value = ch.id;
+    document.getElementById('ch-name').value = ch.name;
+    document.getElementById('ch-id').value = ch.channel_id;
+    document.getElementById('ch-guild').value = ch.guild_name || '';
+    document.getElementById('ch-monitor').checked = ch.monitor_reply;
+    document.getElementById('ch-speak').checked = ch.auto_speak;
+    document.getElementById('channel-modal').style.display = 'flex';
+}
+
+async function deleteChannel(id) {
+    if (!confirm('确定删除此频道？')) return;
+    const res = await fetch(`/api/channels/${id}`, {method:'DELETE'});
+    const data = await res.json();
+    if (data.success) loadChannels();
+    else alert('失败: ' + (data.error || ''));
+}
+
+async function loadChannels() {
+    const tbody = document.getElementById('channels-tbody');
+    if (!currentAccountId) return;
+    const res = await fetch(`/api/accounts/${currentAccountId}/channels`);
+    const channels = await res.json();
+    tbody.innerHTML = channels.map(c => `<tr>
+        <td><strong>${escHtml(c.name)}</strong></td>
+        <td><code>${c.channel_id}</code></td>
+        <td>${escHtml(c.guild_name || '-')}</td>
+        <td>${c.monitor_reply ? '✅' : '❌'}</td>
+        <td>${c.auto_speak ? '✅' : '❌'}</td>
+        <td class="action-cell">
+            <button class="btn btn-xs" onclick='editChannel(${JSON.stringify(c).replace(/'/g,"&#39;")})'>✏️</button>
+            <button class="btn btn-xs" onclick="deleteChannel(${c.id})">🗑️</button>
+        </td>
+    </tr>`).join('');
+}
+
+// ===== 关键词管理 =====
+let editKeywordId = null;
+
+function showKeywordModal() {
+    editKeywordId = null;
+    document.getElementById('kw-edit-id').value = '';
+    document.getElementById('kw-text').value = '';
+    document.getElementById('keyword-modal').style.display = 'flex';
+    // 加载频道选项
+    fetch(`/api/accounts/${currentAccountId}/channels`).then(r=>r.json()).then(chs => {
+        const sel = document.getElementById('kw-channel');
+        sel.innerHTML = '<option value="">所有监听频道</option>' + chs.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+    });
+}
+
+async function saveKeyword() {
+    const keyword = document.getElementById('kw-text').value.trim();
+    if (!keyword) { alert('关键词不能为空'); return; }
+    const channelId = document.getElementById('kw-channel').value || null;
+    const body = {keyword, channel_id: channelId};
+    const editId = document.getElementById('kw-edit-id').value;
+    const url = editId ? `/api/keywords/${editId}` : `/api/accounts/${currentAccountId}/keywords`;
+    const method = editId ? 'PUT' : 'POST';
+    try {
+        const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+        const data = await res.json();
+        if (data.success) { closeModal('keyword-modal'); loadKeywords(); }
+        else alert('失败: ' + (data.error || ''));
+    } catch(e) { alert(e); }
+}
+
+async function loadKeywords() {
+    const tbody = document.getElementById('keywords-tbody');
+    if (!currentAccountId) return;
+    const [kws, chs] = await Promise.all([
+        fetch(`/api/accounts/${currentAccountId}/keywords`).then(r=>r.json()),
+        fetch(`/api/accounts/${currentAccountId}/channels`).then(r=>r.json()),
+    ]);
+    const chMap = {}; chs.forEach(c => chMap[c.id] = c.name);
+    tbody.innerHTML = kws.map(k => `<tr>
+        <td><code>${escHtml(k.keyword)}</code></td>
+        <td>${k.channel_id ? escHtml(chMap[k.channel_id] || 'ID:'+k.channel_id) : '🌐 全部监听频道'}</td>
+        <td>${k.enabled ? '✅' : '❌'}</td>
+        <td class="action-cell">
+            <button class="btn btn-xs" onclick='editKeyword(${JSON.stringify(k).replace(/'/g,"&#39;")})'>✏️</button>
+            <button class="btn btn-xs" onclick="deleteKeyword(${k.id})">🗑️</button>
+        </td>
+    </tr>`).join('');
+}
+
+async function editKeyword(kw) {
+    editKeywordId = kw.id;
+    document.getElementById('kw-edit-id').value = kw.id;
+    document.getElementById('kw-text').value = kw.keyword;
+    document.getElementById('keyword-modal').style.display = 'flex';
+    fetch(`/api/accounts/${currentAccountId}/channels`).then(r=>r.json()).then(chs => {
+        const sel = document.getElementById('kw-channel');
+        sel.innerHTML = '<option value="">所有监听频道</option>' + chs.map(c =>
+            `<option value="${c.id}" ${c.id == kw.channel_id ? 'selected':''}>${escHtml(c.name)}</option>`
+        ).join('');
+    });
+}
+
+async function deleteKeyword(id) {
+    if (!confirm('确定删除此关键词？')) return;
+    const res = await fetch(`/api/keywords/${id}`, {method:'DELETE'});
+    const data = await res.json();
+    if (data.success) loadKeywords();
+    else alert('失败: ' + (data.error || ''));
+}
+
+// ===== 定时任务管理 =====
+let editScheduleId = null;
+
+function showScheduleModal() {
+    editScheduleId = null;
+    document.getElementById('sched-edit-id').value = '';
+    ['sched-name','sched-start','sched-end'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('sched-mode').value = 'custom';
+    document.getElementById('sched-max').value = 1;
+    document.getElementById('schedule-modal').style.display = 'flex';
+    // 加载频道选项
+    fetch(`/api/accounts/${currentAccountId}/channels`).then(r=>r.json()).then(chs => {
+        const sel = document.getElementById('sched-channel');
+        sel.innerHTML = '<option value="">-- 选择频道 --</option>' + chs.filter(c=>c.auto_speak).map(c =>
+            `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+    });
+}
+
+async function saveSchedule() {
+    const name = document.getElementById('sched-name').value.trim();
+    const channelId = document.getElementById('sched-channel').value;
+    const start = document.getElementById('sched-start').value;
+    const end = document.getElementById('sched-end').value;
+    const mode = document.getElementById('sched-mode').value;
+    if (!name || !channelId || !start || !end) { alert('请填写完整信息'); return; }
+    const maxPer = parseInt(document.getElementById('sched-max').value) || 1;
+    const body = {name, channel_id: parseInt(channelId), time_start: start, time_end: end, message_mode: mode, max_per_window: maxPer};
+    const editId = document.getElementById('sched-edit-id').value;
+    const url = editId ? `/api/schedules/${editId}` : `/api/accounts/${currentAccountId}/schedules`;
+    const method = editId ? 'PUT' : 'POST';
+    try {
+        const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+        const data = await res.json();
+        if (data.success) { closeModal('schedule-modal'); loadSchedules(); }
+        else alert('失败: ' + (data.error || ''));
+    } catch(e) { alert(e); }
+}
+
+async function loadSchedules() {
+    const tbody = document.getElementById('schedules-tbody');
+    if (!currentAccountId) return;
+    const [scheds, chs] = await Promise.all([
+        fetch(`/api/accounts/${currentAccountId}/schedules`).then(r=>r.json()),
+        fetch(`/api/accounts/${currentAccountId}/channels`).then(r=>r.json()),
+    ]);
+    const chMap = {}; chs.forEach(c => chMap[c.id] = c.name);
+    const modeMap = {custom:'📝 顺序', random:'🎲 随机', ai:'🤖 AI', mixed:'🔄 混合'};
+
+    tbody.innerHTML = scheds.map(s => `<tr>
+        <td><strong>${escHtml(s.name)}</strong></td>
+        <td>${escHtml(chMap[s.channel_id] || 'ID:'+s.channel_id)}</td>
+        <td>${s.time_start} → ${s.time_end}</td>
+        <td>${modeMap[s.message_mode] || s.message_mode}</td>
+        <td>${s.max_per_window || 1} 条</td>
+        <td>${s.message_count}
+            <button class="btn btn-xs" onclick="showMessages(${s.id}, '${escHtml(s.name)}')">📋</button>
+        </td>
+        <td>${s.enabled ? '🟢 启用' : '🔴 暂停'}</td>
+        <td>${s.last_sent_date || '-'}</td>
+        <td class="action-cell">
+            <button class="btn btn-xs" onclick="toggleSchedule(${s.id})">${s.enabled ? '⏸️' : '▶️'}</button>
+            <button class="btn btn-xs" onclick='editSchedule(${JSON.stringify(s).replace(/'/g,"&#39;")})'>✏️</button>
+            <button class="btn btn-xs" onclick="deleteSchedule(${s.id}, '${escHtml(s.name)}')">🗑️</button>
+        </td>
+    </tr>`).join('');
+}
+
+async function editSchedule(s) {
+    editScheduleId = s.id;
+    document.getElementById('sched-edit-id').value = s.id;
+    document.getElementById('sched-name').value = s.name;
+    document.getElementById('sched-start').value = s.time_start;
+    document.getElementById('sched-end').value = s.time_end;
+    document.getElementById('sched-mode').value = s.message_mode;
+    document.getElementById('sched-max').value = s.max_per_window || 1;
+    document.getElementById('schedule-modal').style.display = 'flex';
+    fetch(`/api/accounts/${currentAccountId}/channels`).then(r=>r.json()).then(chs => {
+        const sel = document.getElementById('sched-channel');
+        sel.innerHTML = chs.filter(c=>c.auto_speak).map(c =>
+            `<option value="${c.id}" ${c.id == s.channel_id ? 'selected':''}>${escHtml(c.name)}</option>`).join('');
+    });
+}
+
+async function toggleSchedule(id) {
+    await fetch(`/api/schedules/${id}/toggle`, {method:'POST'});
+    loadSchedules();
+}
+
+async function deleteSchedule(id, name) {
+    if (!confirm(`确定删除定时任务「${name}」？`)) return;
+    const res = await fetch(`/api/schedules/${id}`, {method:'DELETE'});
+    const data = await res.json();
+    if (data.success) loadSchedules();
+    else alert('失败: ' + (data.error || ''));
+}
+
+// ===== 预设消息管理 =====
+async function showMessages(scheduleId, schedName) {
+    document.getElementById('msg-sched-id').value = scheduleId;
+    document.getElementById('msg-sched-name').textContent = escHtml(schedName);
+    document.getElementById('messages-modal').style.display = 'flex';
+    await loadMessages();
+}
+
+async function loadMessages() {
+    const schedId = document.getElementById('msg-sched-id').value;
+    if (!schedId) return;
+    const msgs = await fetch(`/api/schedules/${schedId}/messages`).then(r=>r.json());
+    const container = document.getElementById('messages-list');
+    container.innerHTML = msgs.map((m, i) => `<div class="message-item" data-id="${m.id}">
+        <span class="msg-order">#${i + 1}</span>
+        <span class="msg-text">${escHtml(m.content)}</span>
+        <span class="msg-actions">
+            <button class="btn btn-xs" onclick="deleteMessage(${m.id})">🗑️</button>
+        </span>
+    </div>`).join('') || '<div class="text-muted text-center">暂无预设消息</div>';
+}
+
+async function addMessage() {
+    const schedId = document.getElementById('msg-sched-id').value;
+    const content = document.getElementById('new-msg-content').value.trim();
+    if (!content) { alert('请输入消息内容'); return; }
+    const res = await fetch(`/api/schedules/${schedId}/messages`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({content}),
+    });
+    const data = await res.json();
+    if (data.success) {
+        document.getElementById('new-msg-content').value = '';
+        loadMessages();
+        loadSchedules();
+    } else alert('失败: ' + (data.error || ''));
+}
+
+async function deleteMessage(id) {
+    if (!confirm('确定删除此消息？')) return;
+    const res = await fetch(`/api/schedule-messages/${id}`, {method:'DELETE'});
+    const data = await res.json();
+    if (data.success) { loadMessages(); loadSchedules(); }
+    else alert('失败: ' + (data.error || ''));
+}
+
+function toggleMessageMode() {
+    // just visual hint
+}
+
+// ===== 工具函数 =====
+function escHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+}
+function closeModal(id) {
+    document.getElementById(id).style.display = 'none';
+}
+</script>
+{% endblock %}

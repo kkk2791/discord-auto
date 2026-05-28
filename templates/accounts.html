@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}账号管理 - Discord Auto{% endblock %}
+{% block header %}👤 账号管理{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3>所有账号</h3>
+        <button class="btn btn-primary" onclick="showAddAccountModal()">➕ 添加账号</button>
+    </div>
+    <div class="card-body">
+        <table class="table" id="accounts-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>名称</th>
+                    <th>用户名</th>
+                    <th>状态</th>
+                    <th>启用</th>
+                    <th>频道数</th>
+                    <th>关键词</th>
+                    <th>定时任务</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="accounts-tbody">
+                <tr><td colspan="9" class="text-center">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 添加/编辑账号弹窗 -->
+<div class="modal-overlay" id="account-modal" style="display:none">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="modal-title">添加账号</h3>
+            <button class="btn-close" onclick="closeModal('account-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>名称</label>
+                <input type="text" id="acc-name" class="form-input" placeholder="如: 小号1">
+            </div>
+            <div class="form-group">
+                <label>Discord Token</label>
+                <input type="password" id="acc-token" class="form-input" placeholder="用户Token">
+                <small style="color: var(--text-muted)">⚠️ 使用个人账号 Token 有封号风险，建议用小号</small>
+            </div>
+            <input type="hidden" id="acc-id" value="">
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('account-modal')">取消</button>
+            <button class="btn btn-primary" onclick="saveAccount()">保存</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let editingAccountId = null;
+
+function showAddAccountModal() {
+    editingAccountId = null;
+    document.getElementById('modal-title').textContent = '添加账号';
+    document.getElementById('acc-id').value = '';
+    document.getElementById('acc-name').value = '';
+    document.getElementById('acc-token').value = '';
+    document.getElementById('account-modal').style.display = 'flex';
+}
+
+function showEditAccountModal(account) {
+    editingAccountId = account.id;
+    document.getElementById('modal-title').textContent = '编辑账号';
+    document.getElementById('acc-id').value = account.id;
+    document.getElementById('acc-name').value = account.name;
+    document.getElementById('acc-token').value = '';
+    document.getElementById('account-modal').style.display = 'flex';
+}
+
+function closeModal(id) {
+    document.getElementById(id).style.display = 'none';
+}
+
+async function saveAccount() {
+    const name = document.getElementById('acc-name').value.trim();
+    const token = document.getElementById('acc-token').value.trim();
+    const id = document.getElementById('acc-id').value;
+
+    if (!name) { alert('请输入名称'); return; }
+    if (!id && !token) { alert('请输入Token'); return; }
+
+    const url = id ? `/api/accounts/${id}` : '/api/accounts';
+    const method = id ? 'PUT' : 'POST';
+    const body = { name };
+    if (token) body.token = token;
+
+    try {
+        const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const data = await res.json();
+        if (data.success) {
+            closeModal('account-modal');
+            loadAccounts();
+        } else {
+            alert('失败: ' + (data.error || '未知错误'));
+        }
+    } catch(e) {
+        alert('请求失败: ' + e);
+    }
+}
+
+async function toggleAccount(id) {
+    try {
+        const res = await fetch(`/api/accounts/${id}/toggle`, { method: 'POST' });
+        const data = await res.json();
+        loadAccounts();
+    } catch(e) { alert(e); }
+}
+
+async function connectAccount(id) {
+    try {
+        const res = await fetch(`/api/accounts/${id}/connect`, { method: 'POST' });
+        const data = await res.json();
+        loadAccounts();
+    } catch(e) { alert(e); }
+}
+
+async function deleteAccount(id, name) {
+    if (!confirm(`确定删除账号「${name}」？此操作不可恢复。`)) return;
+    try {
+        const res = await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) loadAccounts();
+        else alert('删除失败: ' + (data.error || '未知错误'));
+    } catch(e) { alert(e); }
+}
+
+async function loadAccounts() {
+    const tbody = document.getElementById('accounts-tbody');
+    try {
+        const [accounts, channelsData, keywordsData, schedsData] = await Promise.all([
+            fetch('/api/accounts').then(r => r.json()),
+            fetch('/api/accounts').then(r => r.json()).then(async accounts => {
+                const counts = {};
+                for (const a of accounts) {
+                    const res = await fetch(`/api/accounts/${a.id}/channels`);
+                    const chs = await res.json();
+                    counts[a.id] = chs.length;
+                }
+                return counts;
+            }),
+            fetch('/api/accounts').then(r => r.json()).then(async accounts => {
+                const counts = {};
+                for (const a of accounts) {
+                    const res = await fetch(`/api/accounts/${a.id}/keywords`);
+                    const kws = await res.json();
+                    counts[a.id] = kws.length;
+                }
+                return counts;
+            }),
+            fetch('/api/accounts').then(r => r.json()).then(async accounts => {
+                const counts = {};
+                for (const a of accounts) {
+                    const res = await fetch(`/api/accounts/${a.id}/schedules`);
+                    const scheds = await res.json();
+                    counts[a.id] = scheds.length;
+                }
+                return counts;
+            }),
+        ]);
+
+        if (accounts.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">还没有账号，点击右上角添加</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = accounts.map(a => {
+            const statusClass = a.status === 'online' ? 'status-online' : a.status === 'error' ? 'status-error' : 'status-offline';
+            const statusText = a.status === 'online' ? '🟢 在线' : a.status === 'error' ? '🔴 错误' : '⚫ 离线';
+            return `<tr>
+                <td>${a.id}</td>
+                <td><strong>${escHtml(a.name)}</strong></td>
+                <td>${escHtml(a.username || '-')}</td>
+                <td><span class="${statusClass}">${statusText}</span>
+                    ${a.error_message ? `<br><small class="text-danger">${escHtml(a.error_message)}</small>` : ''}
+                </td>
+                <td>${a.is_enabled ? '✅' : '❌'}</td>
+                <td>${channelsData[a.id] || 0}</td>
+                <td>${keywordsData[a.id] || 0}</td>
+                <td>${schedsData[a.id] || 0}</td>
+                <td class="action-cell">
+                    <button class="btn btn-xs" onclick="connectAccount(${a.id})" title="连接">🔌</button>
+                    <button class="btn btn-xs" onclick="showEditAccountModal(${JSON.stringify(a).replace(/"/g,'&quot;')})" title="编辑">✏️</button>
+                    <button class="btn btn-xs" onclick="deleteAccount(${a.id}, '${escHtml(a.name)}')" title="删除">🗑️</button>
+                </td>
+            </tr>`;
+        }).join('');
+    } catch(e) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">加载失败: ' + e + '</td></tr>';
+    }
+}
+
+loadAccounts();
+
+function escHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+}
+
+function closeModal(id) {
+    document.getElementById(id).style.display = 'none';
+}
+</script>
+{% endblock %}

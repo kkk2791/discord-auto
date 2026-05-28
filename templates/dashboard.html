@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 - Discord Auto{% endblock %}
+{% block header %}📊 仪表盘{% endblock %}
+{% block content %}
+<div class="stats-grid" id="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value" id="stat-accounts">0</div>
+        <div class="stat-label">总账号</div>
+    </div>
+    <div class="stat-card accent">
+        <div class="stat-value" id="stat-active">0</div>
+        <div class="stat-label">在线账号</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-today-schedule">0</div>
+        <div class="stat-label">今日发言</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-today-reply">0</div>
+        <div class="stat-label">今日回复</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-week-schedule">0</div>
+        <div class="stat-label">本周发言</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="stat-week-reply">0</div>
+        <div class="stat-label">本周回复</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>账号状态</h3>
+        <button class="btn btn-sm" onclick="refreshStatus()">🔄 刷新</button>
+    </div>
+    <div class="card-body">
+        <table class="table" id="status-table">
+            <thead>
+                <tr>
+                    <th>名称</th>
+                    <th>用户名</th>
+                    <th>状态</th>
+                    <th>最后在线</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="status-tbody">
+                <tr><td colspan="5" class="text-center">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadStats() {
+    try {
+        const [stats, status] = await Promise.all([
+            fetch('/api/stats').then(r => r.json()),
+            fetch('/api/status').then(r => r.json()),
+        ]);
+        document.getElementById('stat-accounts').textContent = stats.total_accounts;
+        document.getElementById('stat-active').textContent = stats.active_accounts;
+        document.getElementById('stat-today-schedule').textContent = stats.today_schedule;
+        document.getElementById('stat-today-reply').textContent = stats.today_reply;
+        document.getElementById('stat-week-schedule').textContent = stats.week_schedule;
+        document.getElementById('stat-week-reply').textContent = stats.week_reply;
+
+        const tbody = document.getElementById('status-tbody');
+        if (status.accounts.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无账号，请先添加</td></tr>';
+            return;
+        }
+        tbody.innerHTML = status.accounts.map(a => {
+            const statusClass = a.status === 'online' ? 'status-online' : a.status === 'error' ? 'status-error' : 'status-offline';
+            const statusText = a.status === 'online' ? '🟢 在线' : a.status === 'error' ? '🔴 错误' : '⚫ 离线';
+            return `<tr>
+                <td><strong>${escHtml(a.name)}</strong></td>
+                <td>${escHtml(a.username || '-')}</td>
+                <td><span class="${statusClass}">${statusText}</span></td>
+                <td>${a.last_online ? new Date(a.last_online).toLocaleString('zh-CN') : '-'}</td>
+                <td>
+                    <a href="/accounts" class="btn btn-xs">管理</a>
+                </td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        console.error('加载状态失败:', e);
+    }
+}
+
+function escHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+}
+
+function refreshStatus() { loadStats(); }
+loadStats();
+setInterval(loadStats, 10000);
+</script>
+{% endblock %}

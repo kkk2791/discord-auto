@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}日志 - Discord Auto{% endblock %}
+{% block header %}📝 运行日志{% endblock %}
+{% block content %}
+<div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('schedule')">📢 发言日志</button>
+    <button class="tab-btn" onclick="switchTab('reply')">💬 回复日志</button>
+</div>
+
+<div id="tab-schedule" class="tab-content">
+    <div class="card">
+        <div class="card-header">
+            <h3>定时发言日志</h3>
+            <button class="btn btn-sm btn-danger" onclick="clearLogs('schedule')">🗑️ 清除</button>
+        </div>
+        <div class="card-body">
+            <table class="table" id="schedule-log-table">
+                <thead><tr>
+                    <th>时间</th><th>账号</th><th>频道</th><th>内容</th><th>状态</th>
+                </tr></thead>
+                <tbody id="schedule-log-tbody"><tr><td colspan="5" class="text-center">加载中...</td></tr></tbody>
+            </table>
+            <div class="pagination" id="schedule-pagination"></div>
+        </div>
+    </div>
+</div>
+
+<div id="tab-reply" class="tab-content" style="display:none">
+    <div class="card">
+        <div class="card-header">
+            <h3>AI 回复日志</h3>
+            <button class="btn btn-sm btn-danger" onclick="clearLogs('reply')">🗑️ 清除</button>
+        </div>
+        <div class="card-body">
+            <table class="table" id="reply-log-table">
+                <thead><tr>
+                    <th>时间</th><th>账号</th><th>频道</th>
+                    <th>触发消息</th><th>关键词</th><th>回复内容</th><th>状态</th>
+                </tr></thead>
+                <tbody id="reply-log-tbody"><tr><td colspan="7" class="text-center">加载中...</td></tr></tbody>
+            </table>
+            <div class="pagination" id="reply-pagination"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentTab = 'schedule';
+let schedPage = 1, replyPage = 1;
+
+function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.textContent.includes(tab === 'schedule' ? '发言' : '回复')));
+    document.getElementById('tab-schedule').style.display = tab === 'schedule' ? 'block' : 'none';
+    document.getElementById('tab-reply').style.display = tab === 'reply' ? 'block' : 'none';
+    if (tab === 'schedule') loadScheduleLogs();
+    else loadReplyLogs();
+}
+
+async function loadScheduleLogs() {
+    const tbody = document.getElementById('schedule-log-tbody');
+    try {
+        const res = await fetch(`/api/logs/schedule?page=${schedPage}&page_size=30`);
+        const data = await res.json();
+        tbody.innerHTML = data.items.map(l => `<tr>
+            <td class="text-nowrap">${new Date(l.sent_at).toLocaleString('zh-CN')}</td>
+            <td>${escHtml(l.account_name)}</td>
+            <td>${escHtml(l.channel_name)}</td>
+            <td class="msg-cell">${escHtml(truncate(l.content, 60))}</td>
+            <td>${l.status === 'success' ? '✅' : '❌ ' + escHtml(l.error_message || '')}</td>
+        </tr>`).join('');
+        renderPagination('schedule-pagination', data, p => { schedPage = p; loadScheduleLogs(); });
+    } catch(e) { tbody.innerHTML = `<tr><td colspan="5" class="text-danger">加载失败: ${e}</td></tr>`; }
+}
+
+async function loadReplyLogs() {
+    const tbody = document.getElementById('reply-log-tbody');
+    try {
+        const res = await fetch(`/api/logs/reply?page=${replyPage}&page_size=30`);
+        const data = await res.json();
+        tbody.innerHTML = data.items.map(l => `<tr>
+            <td class="text-nowrap">${new Date(l.replied_at).toLocaleString('zh-CN')}</td>
+            <td>${escHtml(l.account_name)}</td>
+            <td>${escHtml(l.channel_name)}</td>
+            <td class="msg-cell">${escHtml(truncate(l.trigger_message, 40))}</td>
+            <td><code>${escHtml(l.keyword)}</code></td>
+            <td class="msg-cell">${escHtml(truncate(l.reply_content, 50))}</td>
+            <td>${l.status === 'success' ? '✅' : '❌'}</td>
+        </tr>`).join('');
+        renderPagination('reply-pagination', data, p => { replyPage = p; loadReplyLogs(); });
+    } catch(e) { tbody.innerHTML = `<tr><td colspan="7" class="text-danger">加载失败: ${e}</td></tr>`; }
+}
+
+function renderPagination(containerId, data, callback) {
+    const div = document.getElementById(containerId);
+    if (data.total_pages <= 1) { div.innerHTML = ''; return; }
+    let html = '';
+    if (data.page > 1) html += `<button class="btn btn-xs" onclick="callback(${data.page - 1})">← 上一页</button> `;
+    html += `<span class="page-info">第 ${data.page}/${data.total_pages} 页 (共 ${data.total} 条)</span> `;
+    if (data.page < data.total_pages) html += `<button class="btn btn-xs" onclick="callback(${data.page + 1})">下一页 →</button>`;
+    div.innerHTML = html;
+}
+
+function truncate(s, n) { return s.length > n ? s.substring(0, n) + '...' : s; }
+function escHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+async function clearLogs(type) {
+    const label = type === 'schedule' ? '发言日志' : '回复日志';
+    if (!confirm(`确定清除所有${label}？此操作不可恢复。`)) return;
+    try {
+        const res = await fetch('/api/logs/clear', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({type}),
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(`✅ 已清除 ${data.deleted[type] || 0} 条${label}`);
+            if (type === 'schedule') { schedPage = 1; loadScheduleLogs(); }
+            else { replyPage = 1; loadReplyLogs(); }
+        } else {
+            alert('❌ 清除失败: ' + (data.error || ''));
+        }
+    } catch(e) {
+        alert('❌ 请求失败: ' + e);
+    }
+}
+
+loadScheduleLogs();
+</script>
+{% endblock %}
